@@ -1,4 +1,4 @@
-# QIG Hackathon 2026
+﻿# QIG Hackathon 2026
 
 Repository for a hybrid classical + quantum option-pricing workflow.
 
@@ -58,19 +58,58 @@ qig-hackathon/
 |   |-- train.xlsx
 |   |-- test_template.xlsx
 |   `-- sample_Simulated_Swaption_Price.xlsx
+|
 |-- configs/
-|   |-- baseline.yaml
-|   `-- hybrid.yaml
+|   |-- baseline.yaml          # lr, epochs, model_type: linear/mlp
+|   `-- hybrid.yaml            # lr, epochs, n_modes, n_photons, encoder_type
+|
 |-- src/
-|   |-- classical/
 |   |-- data/
-|   |-- eval/
+|   |   |-- __init__.py
+|   |   |-- loader.py          # load_data() — lê o .xlsx
+|   |   |-- preprocessing.py   # melt, normalize, feature engineering
+|   |   `-- splits.py          # train/val/test split → DataLoaders
+|   |
+|   |-- classical/
+|   |   |-- __init__.py
+|   |   |-- linear.py          # Ridge / Linear Regression (sklearn)
+|   |   `-- mlp.py             # MLP em PyTorch (seu baseline principal)
+|   |
+|   |-- quantum/
+|   |   |-- __init__.py
+|   |   |-- circuit.py         # definição do circuito MerLin (Quantum Dev)
+|   |   `-- encoder.py         # encode dados → input quântico (Quantum Dev)
+|   |
 |   |-- hybrid/
-|   `-- quantum/
-|-- run.py
-|-- Makefile
+|   |   |-- __init__.py
+|   |   |-- model.py           # QRC: encoder quântico + readout clássico
+|   |   `-- trainer.py         # training loop, early stopping, checkpoint
+|   |
+|   `-- eval/
+|       |-- __init__.py
+|       |-- metrics.py         # MAE, RMSE, R² — usado por todos
+|       `-- visualize.py       # curvas de loss, pred vs real, term surface
+|
+|-- run.py                     # entry point: carrega config, roda experimento
+|-- Makefile                   # make baseline | make hybrid | make eval
 `-- requirements.txt
 ```
+
+---
+
+**O fluxo de dados pelo código:**
+```
+loader.py → preprocessing.py → splits.py
+                                    │
+                    ┌───────────────┴───────────────┐
+                    ▼                               ▼
+              classical/mlp.py              hybrid/model.py
+              (seu baseline)          (encoder.py + trainer.py)
+                    │                               │
+                    └───────────────┬───────────────┘
+                                    ▼
+                              eval/metrics.py
+                              eval/visualize.py
 
 Suggested mapping to the pipeline:
 
