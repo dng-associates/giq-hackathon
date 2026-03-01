@@ -138,6 +138,7 @@ The preprocessing and entry-point layers now support a full **temporal feature e
 ### `run.py`
 - CLI entry point using `argparse`.
 - Full temporal flow: data loading → temporal engineering → time split → X/y preparation → DataLoaders.
+- Supports `--model-type normal|hybrid` to switch between classical MLP and MerLin hybrid regressor.
 - Summary messages: features, split date, train/val sizes, batch counts.
 - Graceful handling when `torch` is absent (preprocessing still runs).
 
@@ -184,6 +185,12 @@ python run.py --data-dir s3://raw-721094557902-us-east-1 --lags 1,5,10 --rolling
 | `--rolling-windows` | `5,20` | Comma-separated window sizes for rolling mean/std |
 | `--val-fraction` | `0.2` | Fraction of data reserved for validation (chronological) |
 | `--batch-size` | `32` | Batch size for DataLoaders |
+| `--model-type` | `normal` | Select model: `normal` (MLP) or `hybrid` (MerLin + head) |
+| `--n-modes` | `4` | Number of photonic modes (hybrid only) |
+| `--n-photons` | `2` | Number of photons (hybrid only) |
+| `--quantum-depth` | `2` | Quantum trainable depth (hybrid only) |
+| `--encoding-type` | `angle` | Quantum encoding (`angle` or `amplitude`) |
+| `--measurement` | `probs` | MerLin measurement strategy |
 | `--config` | *(reserved)* | Path to a YAML config file (baseline or hybrid) |
 
 ### Optional Examples
@@ -197,6 +204,9 @@ python run.py --config configs/hybrid.yaml
 
 # Custom lags and rolling windows
 python run.py --data-dir DATASETS --lags 1,3,5,10,20 --rolling-windows 10,30 --val-fraction 0.15
+
+# Hybrid run with MerLin
+python run.py --model-type hybrid --n-modes 4 --n-photons 2 --quantum-depth 2
 ```
 
 ### Using Make
