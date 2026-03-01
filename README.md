@@ -110,7 +110,7 @@ Suggested mapping to the pipeline:
 The preprocessing and entry-point layers now support a full **temporal feature engineering** pipeline.
 
 ### `src/data/loader.py`
-- `load_data(...)` supports both `.xlsx`/`.xls` and `.csv` files.
+- `load_data(...)` supports both `.xlsx`/`.xls` and `.csv` files from local folders or `s3://bucket/prefix`.
 - Optional date parsing on the `Date` column.
 - Utility wrappers: `load_train_data(...)` and `load_test_template(...)`.
 
@@ -169,11 +169,17 @@ pip install -r requirements.txt
 python run.py --data-dir DATASETS --lags 1,5,10 --rolling-windows 5,20 --val-fraction 0.2
 ```
 
+```bash
+python run.py --data-dir s3://raw-721094557902-us-east-1 --lags 1,5,10 --rolling-windows 5,20 --val-fraction 0.2
+```
+
+> For private S3 buckets, install `boto3` and configure AWS credentials. Public buckets also work without `boto3`.
+
 ### All CLI Parameters
 
 | Parameter | Default | Description |
 |---|---|---|
-| `--data-dir` | `DATASETS` | Folder containing the `.xlsx` dataset files |
+| `--data-dir` | `DATASETS` | Local dataset folder or S3 prefix (e.g. `s3://bucket/raw`) |
 | `--lags` | `1,5,10` | Comma-separated lag steps for temporal features |
 | `--rolling-windows` | `5,20` | Comma-separated window sizes for rolling mean/std |
 | `--val-fraction` | `0.2` | Fraction of data reserved for validation (chronological) |

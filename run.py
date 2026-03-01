@@ -20,7 +20,11 @@ def main() -> None:
         description="Temporal preprocessing pipeline for option-pricing data."
     )
     parser.add_argument("--config", default=None, help="Reserved for config integration.")
-    parser.add_argument("--data-dir", default="DATASETS", help="Dataset directory.")
+    parser.add_argument(
+        "--data-dir",
+        default="DATASETS",
+        help="Dataset directory or S3 prefix (e.g. s3://my-bucket/raw).",
+    )
     parser.add_argument("--val-fraction", type=float, default=0.2, help="Validation fraction.")
     parser.add_argument("--batch-size", type=int, default=32, help="Batch size.")
     parser.add_argument("--lags", default="1,5,10", help="Lag windows, comma-separated.")
