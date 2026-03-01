@@ -1,4 +1,10 @@
 import argparse
+import json
+import torch
+from pathlib import Path
+
+from src.classical.mlp import MLP          # Code to get the model
+from src.eval.metrics import evaluate      # Code to get the metrics
 
 from src.data.loader import load_train_data
 from src.data.preprocessing import build_temporal_dataset, prepare_features
@@ -67,6 +73,44 @@ def main() -> None:
         print(f"Train batches: {len(train_loader)} | Val batches: {len(val_loader)}")
     except ModuleNotFoundError:
         print("Torch is not installed. Arrays were created, but DataLoaders were skipped.")
+        
+    ##=======================================
+    ## Start saving the model and artifacts
+    ##=======================================
+
+    output_dir = Path("results")
+    output_dir.mkdir(exist_ok=True)
+
+    model = MLP(input_dim=len(feature_cols))
+    optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
+    criterion = torch.nn.MSELoss()
+
+    for epoch in range(100):
+        model.train()
+        for X_batch, y_batch in train_loader:
+            optimizer.zero_grad()
+            loss = criterion(model(X_batch), y_batch)
+            loss.backward()
+            optimizer.step()
+
+    torch.save(model.state_dict(), output_dir / "model.pt")       # pesos do modelo
+    torch.save({                                                    # checkpoint completo
+        "model_state": model.state_dict(),
+        "feature_cols": feature_cols,
+        "split_date": str(split_date.date()),
+        "lags": lags,
+        "rolling_windows": rolling_windows,
+    }, output_dir / "checkpoint.pt")
+
+    model.eval()
+    with torch.no_grad():
+        y_pred = model(torch.tensor(X_val, dtype=torch.float32)).numpy()
+    metrics = evaluate(y_val, y_pred)
+    with open(output_dir / "metrics.json", "w") as f:
+        json.dump(metrics, f, indent=2)
+
+    print(f"Model saved to {output_dir}/")
+    print(f"Metrics: {metrics}")
 
 
 if __name__ == "__main__":
