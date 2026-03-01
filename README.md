@@ -232,9 +232,9 @@ DataLoaders ready — Train batches: 25 | Val batches: 7
 
 ## Implementation Checklist
 
-- [ ] Preprocessing pipeline in `src/data`
-- [ ] Baseline models in `src/classical`
-- [ ] Quantum circuit + encoder in `src/quantum`
-- [ ] Integrated training pipeline in `src/hybrid`
+- [x] Preprocessing pipeline in `src/data`
+- [x] Baseline models in `src/classical`
+- [x] Quantum circuit + encoder in `src/quantum`
+- [x] Integrated training pipeline in `src/hybrid`
 - [ ] Metrics + visual reports in `src/eval`
-- [ ] Config-driven runs from `run.py`
+- [x] Config-driven runs from `run.py`
