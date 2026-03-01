@@ -1,5 +1,8 @@
 .PHONY: venv install fmt lint baseline hybrid all clean
 
+S3_BUCKET := raw-721094557902-us-east-1
+DATA_DIR := raw
+
 PY := .venv/bin/python
 PIP := .venv/bin/pip
 
@@ -28,6 +31,18 @@ all: baseline hybrid
 clean:
 	rm -rf .pytest_cache .ruff_cache __pycache__ */__pycache__
 	rm -rf results/*
+	rm -rf $(DATA_DIR)/*
+
+.PHONY: data-sync data-list
+
+data-sync:
+	@mkdir -p $(DATA_DIR)
+	aws s3 cp s3://$(S3_BUCKET)/sample_Simulated_Swaption_Price.xlsx $(DATA_DIR)/ --no-sign-request --only-show-errors
+	aws s3 cp s3://$(S3_BUCKET)/test_template.xlsx $(DATA_DIR)/ --no-sign-request --only-show-errors
+	aws s3 cp s3://$(S3_BUCKET)/train.xlsx $(DATA_DIR)/ --no-sign-request --only-show-errors
+
+data-list:
+	aws s3 ls s3://$(S3_BUCKET)/
 
 .PHONY: terraform-init
 
@@ -60,3 +75,6 @@ terraform-destroy:
 terraform-routine: terraform-plan terraform-apply
 
 .PHONY: terraform-init terraform-fmt terraform-validate terraform-plan terraform-apply terraform-destroy terraform-routine
+
+set-dataset:
+	./scripts/s3_upload_raw.sh
