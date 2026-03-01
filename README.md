@@ -1,4 +1,4 @@
-﻿# QIG Hackathon 2026
+﻿# QuTech - QIG Hackathon 2026
 
 Repository for a hybrid classical + quantum option-pricing workflow.
 
@@ -66,50 +66,34 @@ qig-hackathon/
 |-- src/
 |   |-- data/
 |   |   |-- __init__.py
-|   |   |-- loader.py          # load_data() — lê o .xlsx
-|   |   |-- preprocessing.py   # melt, normalize, feature engineering
-|   |   `-- splits.py          # train/val/test split → DataLoaders
+|   |   |-- loader.py          # load_data() — reads .xlsx / .csv
+|   |   |-- preprocessing.py   # melt, normalize, temporal feature engineering
+|   |   `-- splits.py          # chronological train/val/test split -> DataLoaders
 |   |
 |   |-- classical/
 |   |   |-- __init__.py
 |   |   |-- linear.py          # Ridge / Linear Regression (sklearn)
-|   |   `-- mlp.py             # MLP em PyTorch (seu baseline principal)
+|   |   `-- mlp.py             # MLP in PyTorch (main baseline)
 |   |
 |   |-- quantum/
 |   |   |-- __init__.py
-|   |   |-- circuit.py         # definição do circuito MerLin (Quantum Dev)
-|   |   `-- encoder.py         # encode dados → input quântico (Quantum Dev)
+|   |   |-- circuit.py         # MerLin circuit definition (Quantum Dev)
+|   |   `-- encoder.py         # encode data -> quantum input (Quantum Dev)
 |   |
 |   |-- hybrid/
 |   |   |-- __init__.py
-|   |   |-- model.py           # QRC: encoder quântico + readout clássico
+|   |   |-- model.py           # QRC: quantum encoder + classical readout
 |   |   `-- trainer.py         # training loop, early stopping, checkpoint
 |   |
 |   `-- eval/
 |       |-- __init__.py
-|       |-- metrics.py         # MAE, RMSE, R² — usado por todos
-|       `-- visualize.py       # curvas de loss, pred vs real, term surface
+|       |-- metrics.py         # MAE, RMSE, R2 — shared across all experiments
+|       `-- visualize.py       # loss curves, pred vs real, term surface plots
 |
-|-- run.py                     # entry point: carrega config, roda experimento
+|-- run.py                     # entry point: loads config, runs experiment
 |-- Makefile                   # make baseline | make hybrid | make eval
 `-- requirements.txt
 ```
-
----
-
-**O fluxo de dados pelo código:**
-```
-loader.py → preprocessing.py → splits.py
-                                    │
-                    ┌───────────────┴───────────────┐
-                    ▼                               ▼
-              classical/mlp.py              hybrid/model.py
-              (seu baseline)          (encoder.py + trainer.py)
-                    │                               │
-                    └───────────────┬───────────────┘
-                                    ▼
-                              eval/metrics.py
-                              eval/visualize.py
 
 Suggested mapping to the pipeline:
 
@@ -119,29 +103,116 @@ Suggested mapping to the pipeline:
 - `src/quantum` -> `Quantum Circuit` and `Feature Encoder`
 - `src/hybrid` -> `Pipeline Integration` and `Experiment Runner`
 
+---
+
+## Recent Changes — Temporal Dynamics
+
+The preprocessing and entry-point layers now support a full **temporal feature engineering** pipeline.
+
+### `src/data/loader.py`
+- `load_data(...)` supports both `.xlsx`/`.xls` and `.csv` files.
+- Optional date parsing on the `Date` column.
+- Utility wrappers: `load_train_data(...)` and `load_test_template(...)`.
+
+### `src/data/preprocessing.py`
+- Dedicated regex to extract `tenor` and `maturity` from column names.
+- Local `StandardScaler` fallback when `scikit-learn` is not installed.
+- Temporal preprocessing pipeline:
+  - `melt_maturities(...)` — reshapes wide to long format by maturity
+  - `add_temporal_features(...)` — adds lags, diffs, returns, rolling stats
+  - `normalize_prices(...)`
+  - `prepare_features(...)`
+  - `build_temporal_dataset(...)`
+- Temporal features added:
+  - Lags: `price_lag_*`
+  - 1-step difference: `price_diff_1`
+  - 1-step return: `price_return_1`
+  - Rolling mean/std: `price_roll_mean_*`, `price_roll_std_*`
+  - Time index in days: `time_idx_days`
+
+### `src/data/splits.py`
+- Chronological split by date via `time_based_split(...)`.
+- `create_dataloaders(X_train, y_train, X_val, y_val, ...)` builds DataLoaders from pre-split arrays.
+- PyTorch import is deferred inside the function to avoid failure when `torch` is not installed.
+
+### `run.py`
+- CLI entry point using `argparse`.
+- Full temporal flow: data loading → temporal engineering → time split → X/y preparation → DataLoaders.
+- Summary messages: features, split date, train/val sizes, batch counts.
+- Graceful handling when `torch` is absent (preprocessing still runs).
+
+---
+
 ## How To Run
 
-Install dependencies:
+### Setup
+
+**Linux / macOS**
 
 ```bash
 python -m venv .venv
-. .venv/bin/activate
+source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-Run experiments:
+**Windows PowerShell**
 
-```bash
-python run.py --config configs/baseline.yaml
-python run.py --config configs/hybrid.yaml
+```powershell
+python -m venv .venv
+.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
 ```
 
-Or with Make:
+### Quick Start
+
+```bash
+python run.py --data-dir DATASETS --lags 1,5,10 --rolling-windows 5,20 --val-fraction 0.2
+```
+
+### All CLI Parameters
+
+| Parameter | Default | Description |
+|---|---|---|
+| `--data-dir` | `DATASETS` | Folder containing the `.xlsx` dataset files |
+| `--lags` | `1,5,10` | Comma-separated lag steps for temporal features |
+| `--rolling-windows` | `5,20` | Comma-separated window sizes for rolling mean/std |
+| `--val-fraction` | `0.2` | Fraction of data reserved for validation (chronological) |
+| `--batch-size` | `32` | Batch size for DataLoaders |
+| `--config` | *(reserved)* | Path to a YAML config file (baseline or hybrid) |
+
+### Optional Examples
+
+```bash
+# Baseline run with config file
+python run.py --config configs/baseline.yaml
+
+# Hybrid run with config file
+python run.py --config configs/hybrid.yaml
+
+# Custom lags and rolling windows
+python run.py --data-dir DATASETS --lags 1,3,5,10,20 --rolling-windows 10,30 --val-fraction 0.15
+```
+
+### Using Make
 
 ```bash
 make baseline
 make hybrid
 ```
+
+### Expected Output
+
+```
+Loaded 1000 rows from DATASETS/train.xlsx
+Maturities found: [0.083, 0.166, 0.25, ...]
+Temporal features added: price_lag_1, price_lag_5, price_lag_10, ...
+Split date: 2049-08-01 | Train: 800 rows | Val: 200 rows
+DataLoaders ready — Train batches: 25 | Val batches: 7
+```
+
+> **Note:** `--config` is reserved for future YAML-driven runs. When omitted, all parameters are taken from CLI flags. If `torch` is not installed, preprocessing and splits still run — only DataLoader creation is skipped.
+
+---
 
 ## Implementation Checklist
 

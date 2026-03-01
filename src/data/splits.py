@@ -1,38 +1,67 @@
-import torch
-from torch.utils.data import DataLoader, TensorDataset, random_split
-from skelearn.model_selection import train_test_split
+import numpy as np
+import pandas as pd
 
-def create_dataloaders(X, y, batch_size=32, test_size=0.2, random_state=42):
-    """
-    Create DataLoaders for training and testing.
 
-    Args:
-        X (np.ndarray): The input features.
-        y (np.ndarray): The target labels.
-        batch_size (int): The batch size for the DataLoader.
-        test_size (float): The proportion of the dataset to include in the test split.
-        random_state (int): The random seed for reproducibility.
-    
-    Returns:
-        train_loader (DataLoader): DataLoader for the training set.
-        val_loader (DataLoader): DataLoader for the validation set.
+def time_based_split(
+    df: pd.DataFrame,
+    *,
+    date_col: str = "Date",
+    val_fraction: float = 0.2,
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.Timestamp]:
     """
-    X_train, X_val, y_train, y_val = train_test_split(
-        X, y,
-        test_size=test_size,
-        random_state=random_state,
-        shuffle=True
+    Chronological split by date to avoid temporal leakage.
+    """
+    if date_col not in df.columns:
+        raise ValueError(f"Column '{date_col}' was not found in dataframe.")
+    if not (0 < val_fraction < 1):
+        raise ValueError("'val_fraction' must be in (0, 1).")
+
+    out = df.copy()
+    out[date_col] = pd.to_datetime(out[date_col], errors="coerce", dayfirst=True)
+    out = out.sort_values(date_col).reset_index(drop=True)
+
+    unique_dates = (
+        out[date_col]
+        .dropna()
+        .drop_duplicates()
+        .sort_values()
+        .reset_index(drop=True)
     )
-    
-    x_train = torch.tensor(x_train, dtype=torch.float32)
-    y_train = torch.tensor(y_train, dtype=torch.float32)
-    x_val = torch.tensor(x_val, dtype=torch.float32)
-    y_val = torch.tensor(y_val, dtype=torch.float32)
+    if len(unique_dates) < 2:
+        raise ValueError("Need at least two distinct dates for time-based split.")
 
-    train_dataset = TensorDataset(x_train, y_train)
-    val_dataset = TensorDataset(x_val, y_val)
+    split_idx = int(len(unique_dates) * (1 - val_fraction))
+    split_idx = max(1, min(split_idx, len(unique_dates) - 1))
+    split_date = unique_dates.iloc[split_idx]
 
-    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+    train_df = out[out[date_col] < split_date].reset_index(drop=True)
+    val_df = out[out[date_col] >= split_date].reset_index(drop=True)
+    return train_df, val_df, split_date
+
+
+def create_dataloaders(
+    X_train: np.ndarray,
+    y_train: np.ndarray,
+    X_val: np.ndarray,
+    y_val: np.ndarray,
+    *,
+    batch_size: int = 32,
+    shuffle_train: bool = False,
+) -> tuple[object, object]:
+    """
+    Create train/validation DataLoaders from already split arrays.
+    """
+    import torch
+    from torch.utils.data import DataLoader, TensorDataset
+
+    x_train = torch.tensor(X_train, dtype=torch.float32)
+    y_train_t = torch.tensor(y_train, dtype=torch.float32)
+    x_val = torch.tensor(X_val, dtype=torch.float32)
+    y_val_t = torch.tensor(y_val, dtype=torch.float32)
+
+    train_dataset = TensorDataset(x_train, y_train_t)
+    val_dataset = TensorDataset(x_val, y_val_t)
+
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=shuffle_train)
     val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
-
     return train_loader, val_loader
