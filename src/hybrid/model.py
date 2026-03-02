@@ -42,6 +42,7 @@ else:
             trainable_depth: int = 2,
             measurement: str = "probs",
             encoding_type: Literal["angle", "amplitude"] = "angle",
+            quantum_backend: Literal["auto", "merlin", "simulated"] = "merlin",
         ) -> None:
             super().__init__()
 
@@ -77,6 +78,7 @@ else:
                 input_size=q_input_size if encoding == EncodingType.ANGLE else None,
                 trainable_depth=trainable_depth,
                 measurement=measurement,
+                backend=quantum_backend,
             )
             self.quantum = Quantificator(self.qcfg)
 

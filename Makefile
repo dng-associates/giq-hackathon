@@ -21,10 +21,10 @@ lint:
 	$(PY) -m ruff check .
 
 baseline:
-	$(PY) run.py --config configs/baseline.yaml
+	$(PY) run.py --model-type normal
 
 hybrid:
-	$(PY) run.py --config configs/hybrid.yaml
+	$(PY) run.py --model-type hybrid --quantum-backend merlin
 
 all: baseline hybrid
 

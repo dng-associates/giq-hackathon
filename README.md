@@ -167,11 +167,13 @@ pip install -r requirements.txt
 ### Quick Start
 
 ```bash
-python run.py --data-dir DATASETS --lags 1,5,10 --rolling-windows 5,20 --val-fraction 0.2
+python generate_refined.py --data-dir DATASETS --output-local results/refined_train.csv
+python run.py --train-path results/refined_train.csv --lags 1,5,10 --rolling-windows 5,20 --val-fraction 0.2
 ```
 
 ```bash
-python run.py --data-dir s3://raw-721094557902-us-east-1 --lags 1,5,10 --rolling-windows 5,20 --val-fraction 0.2
+python generate_refined.py --data-dir s3://raw-721094557902-us-east-1 --output-local results/refined_train.csv
+python run.py --train-path results/refined_train.csv --lags 1,5,10 --rolling-windows 5,20 --val-fraction 0.2
 ```
 
 > For private S3 buckets, install `boto3` and configure AWS credentials. Public buckets also work without `boto3`.
@@ -180,17 +182,22 @@ python run.py --data-dir s3://raw-721094557902-us-east-1 --lags 1,5,10 --rolling
 
 | Parameter | Default | Description |
 |---|---|---|
-| `--data-dir` | `DATASETS` | Local dataset folder or S3 prefix (e.g. `s3://bucket/raw`) |
+| `--data-dir` | `DATASETS` | Fallback dataset folder/prefix when `--train-path` is only a filename |
+| `--train-path` | `results/refined_train.csv` | Training file path (local path or `s3://.../file`) |
 | `--lags` | `1,5,10` | Comma-separated lag steps for temporal features |
 | `--rolling-windows` | `5,20` | Comma-separated window sizes for rolling mean/std |
 | `--val-fraction` | `0.2` | Fraction of data reserved for validation (chronological) |
 | `--batch-size` | `32` | Batch size for DataLoaders |
+| `--epochs` | `auto` | Number of training epochs; if omitted, uses all available training batches as epochs |
+| `--lr` | `0.001` | Optimizer learning rate |
+| `--log-every` | `5` | Epoch interval for train/validation metric logs |
 | `--model-type` | `normal` | Select model: `normal` (MLP) or `hybrid` (MerLin + head) |
 | `--n-modes` | `4` | Number of photonic modes (hybrid only) |
 | `--n-photons` | `2` | Number of photons (hybrid only) |
 | `--quantum-depth` | `2` | Quantum trainable depth (hybrid only) |
 | `--encoding-type` | `angle` | Quantum encoding (`angle` or `amplitude`) |
 | `--measurement` | `probs` | MerLin measurement strategy |
+| `--quantum-backend` | `merlin` | Quantum backend: `merlin`, `simulated`, or `auto` |
 | `--config` | *(reserved)* | Path to a YAML config file (baseline or hybrid) |
 
 ### Optional Examples
@@ -206,7 +213,35 @@ python run.py --config configs/hybrid.yaml
 python run.py --data-dir DATASETS --lags 1,3,5,10,20 --rolling-windows 10,30 --val-fraction 0.15
 
 # Hybrid run with MerLin
-python run.py --model-type hybrid --n-modes 4 --n-photons 2 --quantum-depth 2
+python run.py --model-type hybrid --quantum-backend merlin --n-modes 4 --n-photons 2 --quantum-depth 2
+
+# Detailed training logs every epoch
+python run.py --model-type hybrid --quantum-backend merlin --epochs 120 --lr 0.0005 --log-every 1
+
+# Train directly from raw file (without refined CSV)
+python run.py --train-path DATASETS/train.xlsx --model-type normal
+```
+
+### Evaluate a Saved Model
+
+```bash
+python evaluate.py --checkpoint results/checkpoint.pt --data-dir DATASETS --filename train.xlsx --val-fraction 0.2
+```
+
+### Prediction Interface
+
+```bash
+python predict_interface.py --checkpoint results/checkpoint.pt --data-dir DATASETS --filename test_template.xlsx --output results/predictions.csv
+```
+
+### Generate Refined Dataset and Upload to S3
+
+```bash
+python generate_refined.py --data-dir DATASETS --output-local results/refined_train.csv
+```
+
+```bash
+python generate_refined.py --data-dir DATASETS --output-local results/refined_train.csv --s3-destination s3://raw-721094557902-us-east-1/refined/refined_train.csv --s3-format csv
 ```
 
 ### Using Make

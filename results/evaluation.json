@@ -1,0 +1,12 @@
+{
+  "metrics": {
+    "mae": 0.8253092040420734,
+    "mse": 0.9097437934659948,
+    "rmse": 0.9538049032511811,
+    "r2": -3.6843366651329035e-05
+  },
+  "split_date": "2051-08-07",
+  "val_rows": 21280,
+  "checkpoint": "results/checkpoint.pt",
+  "model_type": "hybrid"
+}
