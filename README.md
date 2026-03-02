@@ -305,5 +305,5 @@ DataLoaders ready — Train batches: 25 | Val batches: 7
 - [x] Baseline models in `src/classical`
 - [x] Quantum circuit + encoder in `src/quantum`
 - [x] Integrated training pipeline in `src/hybrid`
-- [ ] Metrics + visual reports in `src/eval`
+- [x] Metrics + visual reports in `src/eval`
 - [x] Config-driven runs from `run.py`
