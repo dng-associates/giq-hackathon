@@ -98,12 +98,20 @@ def _squeeze_predictions(y_hat):
     return y_hat
 
 
-def _collect_targets_and_predictions(model, data_loader, torch):
+def _collect_targets_and_predictions(
+    model,
+    data_loader,
+    torch,
+    *,
+    device,
+    non_blocking: bool = False,
+):
     y_true_parts = []
     y_pred_parts = []
     model.eval()
     with torch.no_grad():
         for x_batch, y_batch in data_loader:
+            x_batch = x_batch.to(device, non_blocking=non_blocking)
             y_hat = _squeeze_predictions(model(x_batch))
             y_true_parts.append(y_batch.detach().cpu().numpy())
             y_pred_parts.append(y_hat.detach().cpu().numpy())
@@ -114,6 +122,31 @@ def _collect_targets_and_predictions(model, data_loader, torch):
     y_true = np.concatenate(y_true_parts)
     y_pred = np.concatenate(y_pred_parts)
     return y_true, y_pred
+
+
+def _resolve_device(torch, requested: str):
+    if requested == "auto":
+        if torch.cuda.is_available():
+            return torch.device("cuda")
+        if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+            return torch.device("mps")
+        return torch.device("cpu")
+
+    if requested == "cuda":
+        if not torch.cuda.is_available():
+            raise ValueError("CUDA was requested but is not available.")
+        return torch.device("cuda")
+
+    if requested == "mps":
+        if not (hasattr(torch.backends, "mps") and torch.backends.mps.is_available()):
+            raise ValueError("MPS was requested but is not available.")
+        return torch.device("mps")
+
+    return torch.device("cpu")
+
+
+def _extract_model_state_dict(model):
+    return model.module.state_dict() if hasattr(model, "module") else model.state_dict()
 
 
 def main() -> None:
@@ -136,6 +169,45 @@ def main() -> None:
     )
     parser.add_argument("--val-fraction", type=float, default=0.2, help="Validation fraction.")
     parser.add_argument("--batch-size", type=int, default=32, help="Batch size.")
+    parser.add_argument(
+        "--num-workers",
+        type=int,
+        default=0,
+        help="Number of DataLoader worker processes (CPU parallelism).",
+    )
+    parser.add_argument(
+        "--pin-memory",
+        action="store_true",
+        help="Pin host memory for faster CPU->GPU transfers.",
+    )
+    parser.add_argument(
+        "--persistent-workers",
+        action="store_true",
+        help="Keep DataLoader workers alive between epochs (requires --num-workers > 0).",
+    )
+    parser.add_argument(
+        "--prefetch-factor",
+        type=int,
+        default=2,
+        help="Batches prefetched by each worker (used only when --num-workers > 0).",
+    )
+    parser.add_argument(
+        "--device",
+        default="auto",
+        choices=("auto", "cpu", "cuda", "mps"),
+        help="Training device. 'auto' prefers CUDA, then MPS, then CPU.",
+    )
+    parser.add_argument(
+        "--data-parallel",
+        action="store_true",
+        help="Use torch.nn.DataParallel on multiple CUDA GPUs.",
+    )
+    parser.add_argument(
+        "--torch-num-threads",
+        type=int,
+        default=0,
+        help="Set torch CPU threads (>0). Keeps default when 0.",
+    )
     parser.add_argument(
         "--epochs",
         type=int,
@@ -194,6 +266,14 @@ def main() -> None:
     args = parser.parse_args()
     if args.log_every <= 0:
         raise ValueError("'--log-every' must be > 0.")
+    if args.num_workers < 0:
+        raise ValueError("'--num-workers' must be >= 0.")
+    if args.prefetch_factor <= 0:
+        raise ValueError("'--prefetch-factor' must be > 0.")
+    if args.persistent_workers and args.num_workers == 0:
+        raise ValueError("'--persistent-workers' requires '--num-workers' > 0.")
+    if args.torch_num_threads < 0:
+        raise ValueError("'--torch-num-threads' must be >= 0.")
 
     lags = _parse_int_list(args.lags)
     rolling_windows = _parse_int_list(args.rolling_windows)
@@ -279,6 +359,15 @@ def main() -> None:
         )
         return
 
+    if args.torch_num_threads > 0:
+        torch.set_num_threads(args.torch_num_threads)
+
+    device = _resolve_device(torch, args.device)
+    if args.data_parallel and device.type != "cuda":
+        raise ValueError("'--data-parallel' is only supported with CUDA.")
+    if args.data_parallel and torch.cuda.device_count() < 2:
+        raise ValueError("'--data-parallel' requires at least 2 CUDA GPUs.")
+
     train_loader, val_loader = create_dataloaders(
         X_train,
         y_train,
@@ -286,8 +375,17 @@ def main() -> None:
         y_val,
         batch_size=args.batch_size,
         shuffle_train=False,
+        num_workers=args.num_workers,
+        pin_memory=args.pin_memory,
+        persistent_workers=args.persistent_workers,
+        prefetch_factor=args.prefetch_factor,
     )
     print(f"Train batches: {len(train_loader)} | Val batches: {len(val_loader)}")
+    print(
+        "Parallel settings: "
+        f"device={device} | workers={args.num_workers} | "
+        f"pin_memory={args.pin_memory} | persistent_workers={args.persistent_workers}"
+    )
 
     total_epochs = args.epochs if args.epochs is not None else len(train_loader)
     if total_epochs <= 0:
@@ -320,9 +418,15 @@ def main() -> None:
     else:
         model = MLP(input_dim=len(feature_cols))
 
+    model = model.to(device)
+    if args.data_parallel:
+        model = torch.nn.DataParallel(model)
+        print(f"DataParallel enabled on {torch.cuda.device_count()} GPUs.")
+
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
     criterion = torch.nn.MSELoss()
     history: list[dict[str, Any]] = []
+    use_non_blocking = args.pin_memory and device.type == "cuda"
 
     for epoch in range(1, total_epochs + 1):
         model.train()
@@ -330,6 +434,9 @@ def main() -> None:
         epoch_count = 0
 
         for X_batch, y_batch in train_loader:
+            X_batch = X_batch.to(device, non_blocking=use_non_blocking)
+            y_batch = y_batch.to(device, non_blocking=use_non_blocking)
+
             optimizer.zero_grad()
             y_hat = _squeeze_predictions(model(X_batch))
             loss = criterion(y_hat, y_batch)
@@ -350,11 +457,15 @@ def main() -> None:
                 model,
                 train_loader,
                 torch,
+                device=device,
+                non_blocking=use_non_blocking,
             )
             y_val_true, y_val_pred = _collect_targets_and_predictions(
                 model,
                 val_loader,
                 torch,
+                device=device,
+                non_blocking=use_non_blocking,
             )
             train_metrics = evaluate(y_train_true, y_train_pred)
             val_metrics = evaluate(y_val_true, y_val_pred)
@@ -380,9 +491,10 @@ def main() -> None:
     with open(output_dir / "training_history.json", "w", encoding="utf-8") as f:
         json.dump(history, f, indent=2)
 
-    torch.save(model.state_dict(), output_dir / "model.pt")       # pesos do modelo
+    model_state = _extract_model_state_dict(model)
+    torch.save(model_state, output_dir / "model.pt")       # pesos do modelo
     torch.save({                                                    # checkpoint completo
-        "model_state": model.state_dict(),
+        "model_state": model_state,
         "model_type": args.model_type,
         "train_path": args.train_path,
         "feature_cols": feature_cols,
@@ -405,8 +517,9 @@ def main() -> None:
 
     model.eval()
     with torch.no_grad():
-        y_pred_t = _squeeze_predictions(model(torch.tensor(X_val, dtype=torch.float32)))
-        y_pred = y_pred_t.numpy()
+        x_val_t = torch.tensor(X_val, dtype=torch.float32).to(device)
+        y_pred_t = _squeeze_predictions(model(x_val_t))
+        y_pred = y_pred_t.detach().cpu().numpy()
     metrics = evaluate(y_val, y_pred)
     with open(output_dir / "metrics.json", "w") as f:
         json.dump(metrics, f, indent=2)

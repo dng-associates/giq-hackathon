@@ -1,0 +1,157 @@
+{
+  "generated_at_utc": "2026-03-02T22:18:55.425756+00:00",
+  "config": {
+    "data_dir": "DATASETS",
+    "train_filename": "train.xlsx",
+    "checkpoint_path": "results/checkpoint.pt",
+    "training_history_path": "results/training_history.json",
+    "output_markdown": "docs/technical_report.md",
+    "assets_dir": "docs/assets/technical_report",
+    "benchmark_repeats": 3,
+    "val_fraction": 0.2,
+    "batch_size": 256
+  },
+  "environment": {
+    "python_version": "3.12.3",
+    "platform": "Linux-6.6.87.2-microsoft-standard-WSL2-x86_64-with-glibc2.39"
+  },
+  "dataset": {
+    "raw_rows": 494,
+    "raw_columns": 225,
+    "long_rows": 110656,
+    "feature_rows": 106400,
+    "feature_columns": 13,
+    "split_date": "2051-08-07",
+    "train_rows": 85120,
+    "val_rows": 21280,
+    "contracts_count": 224.0,
+    "contract_history_min": 494.0,
+    "contract_history_max": 494.0,
+    "contract_history_mean": 494.0
+  },
+  "benchmark": [
+    {
+      "name": "load_data",
+      "repeats": 3,
+      "mean_ms": 867.8087356650698,
+      "min_ms": 545.0786360015627,
+      "max_ms": 1458.2669809969957,
+      "std_ms": 418.12040398762497
+    },
+    {
+      "name": "melt_maturities",
+      "repeats": 3,
+      "mean_ms": 224.04012266512532,
+      "min_ms": 194.15540999762015,
+      "max_ms": 282.379766998929,
+      "std_ms": 41.25648752357123
+    },
+    {
+      "name": "add_temporal_features",
+      "repeats": 3,
+      "mean_ms": 233.74746833117874,
+      "min_ms": 226.8003779972787,
+      "max_ms": 242.03046799812,
+      "std_ms": 6.289006316210936
+    },
+    {
+      "name": "normalize_prices",
+      "repeats": 3,
+      "mean_ms": 11.910774333955487,
+      "min_ms": 9.429532001377083,
+      "max_ms": 15.41666599950986,
+      "std_ms": 2.549362413045716
+    },
+    {
+      "name": "time_based_split",
+      "repeats": 3,
+      "mean_ms": 21.402665331455257,
+      "min_ms": 18.128567997337086,
+      "max_ms": 25.867012998787686,
+      "std_ms": 3.269393894073378
+    },
+    {
+      "name": "prepare_features",
+      "repeats": 3,
+      "mean_ms": 1.106116667263753,
+      "min_ms": 0.7218940008897334,
+      "max_ms": 1.656473999901209,
+      "std_ms": 0.39921630656317963
+    },
+    {
+      "name": "create_dataloaders",
+      "repeats": 3,
+      "mean_ms": 7.859661000111373,
+      "min_ms": 0.1569640007801354,
+      "max_ms": 22.922115997062065,
+      "std_ms": 10.651684207707794
+    },
+    {
+      "name": "load_model",
+      "repeats": 1,
+      "mean_ms": 26.952254000207176,
+      "min_ms": 26.952254000207176,
+      "max_ms": 26.952254000207176,
+      "std_ms": 0.0
+    },
+    {
+      "name": "preprocess_with_checkpoint",
+      "repeats": 3,
+      "mean_ms": 476.439204999527,
+      "min_ms": 429.4998609984759,
+      "max_ms": 511.1481450003339,
+      "std_ms": 34.43639215151037
+    },
+    {
+      "name": "make_feature_matrix",
+      "repeats": 3,
+      "mean_ms": 0.3209976675861981,
+      "min_ms": 0.22028999956091866,
+      "max_ms": 0.46599000052083284,
+      "std_ms": 0.10508083008657629
+    },
+    {
+      "name": "predict_array",
+      "repeats": 3,
+      "mean_ms": 17.369026333957056,
+      "min_ms": 0.8412419992964715,
+      "max_ms": 49.64557800121838,
+      "std_ms": 22.82518430037922
+    }
+  ],
+  "training_history_points": 5,
+  "best_epoch": {
+    "epoch": 20,
+    "train_loss": 0.001798659989982756,
+    "train_metrics": {
+      "mae": 0.1510443304188807,
+      "mse": 0.03709683440818508,
+      "rmse": 0.19260538520037562,
+      "r2": 0.9635800956301037
+    },
+    "val_metrics": {
+      "mae": 0.07189999535342773,
+      "mse": 0.008061533014581594,
+      "rmse": 0.08978604019880593,
+      "r2": 0.9911383511638109
+    }
+  },
+  "model_metrics": {
+    "mae": 0.07189999554389369,
+    "mse": 0.00806153298079249,
+    "rmse": 0.08978604001064136,
+    "r2": 0.9911383512009536
+  },
+  "residual_summary": {
+    "residual_mean": 0.053123243153095245,
+    "residual_std": 0.0723840743303299,
+    "residual_abs_p95": 0.17709016799926758
+  },
+  "inference_summary": {
+    "checkpoint": "results/checkpoint.pt",
+    "checkpoint_model_type": "normal",
+    "checkpoint_split_date": "2051-08-07",
+    "validation_rows": 21280
+  },
+  "dataloader_status": "ok"
+}

@@ -139,6 +139,11 @@ The preprocessing and entry-point layers now support a full **temporal feature e
 - CLI entry point using `argparse`.
 - Full temporal flow: data loading → temporal engineering → time split → X/y preparation → DataLoaders.
 - Supports `--model-type normal|hybrid` to switch between classical MLP and MerLin hybrid regressor.
+- Supports parallel training controls:
+  - DataLoader workers (`--num-workers`, `--persistent-workers`, `--prefetch-factor`)
+  - Device selection (`--device auto|cpu|cuda|mps`)
+  - Optional multi-GPU training (`--data-parallel`, CUDA only)
+  - CPU thread tuning (`--torch-num-threads`)
 - Summary messages: features, split date, train/val sizes, batch counts.
 - Graceful handling when `torch` is absent (preprocessing still runs).
 
@@ -178,6 +183,23 @@ python run.py --train-path results/refined_train.csv --lags 1,5,10 --rolling-win
 
 > For private S3 buckets, install `boto3` and configure AWS credentials. Public buckets also work without `boto3`.
 
+### Training Parallelism
+
+```bash
+# CPU parallelism for DataLoader
+python run.py --train-path results/refined_train.csv --epochs 20 --device cpu --num-workers 4 --persistent-workers --prefetch-factor 2 --torch-num-threads 8
+```
+
+```bash
+# Single-GPU training
+python run.py --train-path results/refined_train.csv --epochs 20 --device cuda --num-workers 4 --pin-memory --persistent-workers
+```
+
+```bash
+# Multi-GPU training (requires at least 2 CUDA GPUs)
+python run.py --train-path results/refined_train.csv --epochs 20 --device cuda --data-parallel --num-workers 8 --pin-memory --persistent-workers
+```
+
 ### All CLI Parameters
 
 | Parameter | Default | Description |
@@ -188,6 +210,13 @@ python run.py --train-path results/refined_train.csv --lags 1,5,10 --rolling-win
 | `--rolling-windows` | `5,20` | Comma-separated window sizes for rolling mean/std |
 | `--val-fraction` | `0.2` | Fraction of data reserved for validation (chronological) |
 | `--batch-size` | `32` | Batch size for DataLoaders |
+| `--num-workers` | `0` | Number of parallel DataLoader worker processes |
+| `--pin-memory` | `False` | Enable pinned host memory for faster CPU→GPU transfers |
+| `--persistent-workers` | `False` | Keep DataLoader workers alive between epochs (requires `--num-workers > 0`) |
+| `--prefetch-factor` | `2` | Number of prefetched batches per worker (`--num-workers > 0`) |
+| `--device` | `auto` | Training device selection: `auto`, `cpu`, `cuda`, `mps` |
+| `--data-parallel` | `False` | Enable `torch.nn.DataParallel` on multiple CUDA GPUs |
+| `--torch-num-threads` | `0` | Override PyTorch CPU thread count (`0` keeps default) |
 | `--epochs` | `auto` | Number of training epochs; if omitted, uses all available training batches as epochs |
 | `--lr` | `0.001` | Optimizer learning rate |
 | `--log-every` | `5` | Epoch interval for train/validation metric logs |

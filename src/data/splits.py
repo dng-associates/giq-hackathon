@@ -47,12 +47,21 @@ def create_dataloaders(
     *,
     batch_size: int = 32,
     shuffle_train: bool = False,
+    num_workers: int = 0,
+    pin_memory: bool = False,
+    persistent_workers: bool = False,
+    prefetch_factor: int | None = 2,
 ) -> tuple[object, object]:
     """
     Create train/validation DataLoaders from already split arrays.
     """
     import torch
     from torch.utils.data import DataLoader, TensorDataset
+
+    if num_workers < 0:
+        raise ValueError("'num_workers' must be >= 0.")
+    if prefetch_factor is not None and prefetch_factor <= 0:
+        raise ValueError("'prefetch_factor' must be > 0 when provided.")
 
     x_train = torch.tensor(X_train, dtype=torch.float32)
     y_train_t = torch.tensor(y_train, dtype=torch.float32)
@@ -62,6 +71,24 @@ def create_dataloaders(
     train_dataset = TensorDataset(x_train, y_train_t)
     val_dataset = TensorDataset(x_val, y_val_t)
 
-    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=shuffle_train)
-    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
+    common_loader_kwargs = {
+        "batch_size": batch_size,
+        "num_workers": num_workers,
+        "pin_memory": pin_memory,
+    }
+    if num_workers > 0:
+        common_loader_kwargs["persistent_workers"] = persistent_workers
+        if prefetch_factor is not None:
+            common_loader_kwargs["prefetch_factor"] = prefetch_factor
+
+    train_loader = DataLoader(
+        train_dataset,
+        shuffle=shuffle_train,
+        **common_loader_kwargs,
+    )
+    val_loader = DataLoader(
+        val_dataset,
+        shuffle=False,
+        **common_loader_kwargs,
+    )
     return train_loader, val_loader
