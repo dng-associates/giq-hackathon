@@ -42,6 +42,7 @@ def _build_scaler_from_checkpoint(checkpoint: dict[str, Any]) -> StandardScaler 
     scaler.scale_ = np.array([float(scale)], dtype=float)
     scaler.var_ = scaler.scale_**2
     scaler.n_features_in_ = 1
+    scaler.feature_names_in_ = np.array(["price"], dtype=object)
     return scaler
 
 
@@ -101,6 +102,12 @@ def preprocess_with_checkpoint(
     rolling_windows = _as_int_list(checkpoint.get("rolling_windows"), default=(5, 20))
 
     df_long = melt_maturities(df_raw, date_col=date_col, value_name="price")
+    if df_long.empty:
+        raise ValueError(
+            "No valid price rows were found after parsing input data. "
+            "Check date/contract columns and ensure there are non-null prices."
+        )
+
     df_feat = add_temporal_features(
         df_long,
         date_col=date_col,
@@ -109,6 +116,16 @@ def preprocess_with_checkpoint(
         rolling_windows=rolling_windows,
         dropna=True,
     )
+    if df_feat.empty:
+        required_history = max(max(lags, default=0), max(rolling_windows, default=0))
+        group_sizes = df_long.groupby(["tenor", "maturity"], dropna=False).size()
+        max_history_found = int(group_sizes.max()) if not group_sizes.empty else 0
+        raise ValueError(
+            "Temporal preprocessing produced zero rows for inference. "
+            f"This checkpoint needs at least {required_history} observations per contract "
+            f"(lags={lags}, rolling_windows={rolling_windows}), but the maximum found was "
+            f"{max_history_found}. Provide more historical prices in the input file."
+        )
 
     scaler = _build_scaler_from_checkpoint(checkpoint)
     if scaler is not None:

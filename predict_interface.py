@@ -45,7 +45,10 @@ def main() -> None:
 
     model, checkpoint = load_model(args.checkpoint)
     df_raw = load_data(filename=args.filename, data_dir=args.data_dir)
-    df_feat = preprocess_with_checkpoint(df_raw, checkpoint)
+    try:
+        df_feat = preprocess_with_checkpoint(df_raw, checkpoint)
+    except ValueError as exc:
+        raise SystemExit(f"Inference preprocessing error: {exc}") from exc
 
     feature_cols = list(checkpoint["feature_cols"])
     X = make_feature_matrix(df_feat, feature_cols)

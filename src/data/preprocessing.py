@@ -150,6 +150,15 @@ def normalize_prices(
         raise ValueError(f"Column '{price_col}' was not found in dataframe.")
 
     out = df.copy()
+    if out.empty:
+        if scaler is None:
+            raise ValueError(
+                "Cannot normalize prices from an empty dataframe. "
+                "Check if temporal preprocessing removed all rows."
+            )
+        out[f"{price_col}_norm"] = pd.Series(index=out.index, dtype=float)
+        return out, scaler
+
     if scaler is None:
         scaler = StandardScaler()
         out[f"{price_col}_norm"] = scaler.fit_transform(out[[price_col]])
