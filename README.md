@@ -32,6 +32,11 @@ flowchart LR
     FE --> PI
 ```
 
+## Documentation
+
+- [Technical Report](docs/technical_report.md)
+- [Quantum Processing Notes](docs/quamtum_processing.md)
+
 ## Stage Responsibilities
 
 ### Modeling Dev
