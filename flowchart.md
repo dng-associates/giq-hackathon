@@ -1,3 +1,4 @@
+```mermaid
 flowchart TD
       U[Execution Entry] --> M[Makefile targets]
       U --> D[Docker ENTRYPOINT: run.py]
@@ -82,3 +83,4 @@ flowchart TD
       TR --> PLOTS[create charts png]
       TR --> MD[write docs/technical_report.md]
       TR --> JSON[write technical_report_data.json]
+```
