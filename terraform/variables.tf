@@ -19,7 +19,7 @@ variable "force_destroy" {
 variable "bucket_name_prefix" {
   type        = string
   description = "Prefix used when bucket_name is not set."
-  default     = "raw"
+  default     = "dataset"
 }
 
 variable "tfstate_bucket_name" {

@@ -1,7 +1,9 @@
-.PHONY: venv install fmt lint baseline hybrid all clean
+.PHONY: venv install fmt lint baseline hybrid all clean data-raw data-refined data clean-data data-sync data-list
 
-S3_BUCKET := raw-721094557902-us-east-1
-DATA_DIR := raw
+DATASET_BUCKET ?= dataset-721094557902-us-east-1
+AWS_REGION ?= us-east-1
+DATA_RAW_DIR := data/raw
+DATA_REFINED_DIR := data/refined
 
 PY := .venv/bin/python
 PIP := .venv/bin/pip
@@ -31,18 +33,31 @@ all: baseline hybrid
 clean:
 	rm -rf .pytest_cache .ruff_cache __pycache__ */__pycache__
 	rm -rf results/*
-	rm -rf $(DATA_DIR)/*
+	rm -rf $(DATA_RAW_DIR)/*
 
-.PHONY: data-sync data-list
+data-raw:
+	@mkdir -p $(DATA_RAW_DIR)
+	aws --region $(AWS_REGION) s3 sync s3://$(DATASET_BUCKET)/raw/v1 $(DATA_RAW_DIR) \
+		--no-sign-request --only-show-errors --size-only
+
+data-refined:
+	@mkdir -p $(DATA_REFINED_DIR)
+	aws --region $(AWS_REGION) s3 sync s3://$(DATASET_BUCKET)/refined/v1 $(DATA_REFINED_DIR) \
+		--no-sign-request --only-show-errors --size-only
+
+data: data-raw data-refined
+
+clean-data:
+	rm -rf $(DATA_RAW_DIR) $(DATA_REFINED_DIR)
 
 data-sync:
-	@mkdir -p $(DATA_DIR)
-	aws s3 cp s3://$(S3_BUCKET)/sample_Simulated_Swaption_Price.xlsx $(DATA_DIR)/ --no-sign-request --only-show-errors
-	aws s3 cp s3://$(S3_BUCKET)/test_template.xlsx $(DATA_DIR)/ --no-sign-request --only-show-errors
-	aws s3 cp s3://$(S3_BUCKET)/train.xlsx $(DATA_DIR)/ --no-sign-request --only-show-errors
+	@mkdir -p $(DATA_RAW_DIR)
+	aws --region $(AWS_REGION) s3 cp s3://$(DATASET_BUCKET)/raw/sample_Simulated_Swaption_Price.xlsx $(DATA_RAW_DIR)/ --no-sign-request --only-show-errors
+	aws --region $(AWS_REGION) s3 cp s3://$(DATASET_BUCKET)/raw/test_template.xlsx $(DATA_RAW_DIR)/ --no-sign-request --only-show-errors
+	aws --region $(AWS_REGION) s3 cp s3://$(DATASET_BUCKET)/raw/train.xlsx $(DATA_RAW_DIR)/ --no-sign-request --only-show-errors
 
 data-list:
-	aws s3 ls s3://$(S3_BUCKET)/
+	aws --region $(AWS_REGION) s3 ls s3://$(DATASET_BUCKET)/
 
 .PHONY: terraform-init
 

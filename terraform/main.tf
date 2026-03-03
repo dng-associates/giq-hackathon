@@ -92,18 +92,43 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "tfstate_sse" {
 
 data "aws_iam_policy_document" "public_read_selected_prefixes" {
   statement {
-    sid     = "PublicReadRawOnly"
+    sid     = "PublicReadSelectedPrefixes"
     effect  = "Allow"
     actions = ["s3:GetObject"]
 
     resources = [
-      "${aws_s3_bucket.data.arn}/*",
-      "${aws_s3_bucket.data.arn}/raw/*"
+      "${aws_s3_bucket.data.arn}/raw/v1/*",
+      "${aws_s3_bucket.data.arn}/refined/v1/*"
     ]
 
     principals {
       type        = "*"
       identifiers = ["*"]
+    }
+  }
+
+  statement {
+    sid     = "PublicListSelectedPrefixes"
+    effect  = "Allow"
+    actions = ["s3:ListBucket"]
+    resources = [
+      aws_s3_bucket.data.arn
+    ]
+
+    principals {
+      type        = "*"
+      identifiers = ["*"]
+    }
+
+    condition {
+      test     = "StringLike"
+      variable = "s3:prefix"
+      values = [
+        "raw/v1/*",
+        "raw/v1/",
+        "refined/v1/*",
+        "refined/v1/"
+      ]
     }
   }
 }
