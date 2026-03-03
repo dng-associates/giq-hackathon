@@ -188,6 +188,56 @@ python run.py --train-path results/refined_train.csv --lags 1,5,10 --rolling-win
 
 > For private S3 buckets, install `boto3` and configure AWS credentials. Public buckets also work without `boto3`.
 
+## Dataset
+
+The public dataset bucket is organized as:
+
+```text
+s3://<DATASET_BUCKET>/
+  raw/v1/        (immutable dataset)
+  refined/v1/    (processed dataset, may be updated)
+```
+
+To download locally (no AWS credentials required):
+
+```bash
+make data
+```
+
+This syncs to:
+
+```text
+data/raw/
+data/refined/
+```
+
+You can also run `make data-raw` or `make data-refined` to pull one split. Configure the bucket and region with `DATASET_BUCKET` and `AWS_REGION`.
+
+## Dataset
+
+The public dataset bucket is organized as:
+
+```text
+s3://<DATASET_BUCKET>/
+  raw/v1/        (immutable dataset)
+  refined/v1/    (processed dataset, may be updated)
+```
+
+To download locally (no AWS credentials required):
+
+```bash
+make data
+```
+
+This syncs to:
+
+```text
+data/raw/
+data/refined/
+```
+
+You can also run `make data-raw` or `make data-refined` to pull one split. Configure the bucket and region with `DATASET_BUCKET` and `AWS_REGION`.
+
 <<<<<<< Updated upstream
 ### Training Parallelism
 
@@ -205,6 +255,31 @@ python run.py --train-path results/refined_train.csv --epochs 20 --device cuda -
 # Multi-GPU training (requires at least 2 CUDA GPUs)
 python run.py --train-path results/refined_train.csv --epochs 20 --device cuda --data-parallel --num-workers 8 --pin-memory --persistent-workers
 ```
+
+## Dataset
+
+The public dataset bucket is organized as:
+
+```text
+s3://<DATASET_BUCKET>/
+  raw/v1/        (immutable dataset)
+  refined/v1/    (processed dataset, may be updated)
+```
+
+To download locally (no AWS credentials required):
+
+```bash
+make data
+```
+
+This syncs to:
+
+```text
+data/raw/
+data/refined/
+```
+
+You can also run `make data-raw` or `make data-refined` to pull one split. Configure the bucket and region with `DATASET_BUCKET` and `AWS_REGION`.
 
 ### All CLI Parameters
 
