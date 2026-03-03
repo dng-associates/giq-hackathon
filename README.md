@@ -443,13 +443,6 @@ python generate_refined.py --data-dir DATASETS --output-local results/refined_tr
 python generate_refined.py --data-dir DATASETS --output-local results/refined_train.csv --s3-destination s3://raw-721094557902-us-east-1/refined/refined_train.csv --s3-format csv
 ```
 
-### Using Make
-
-```bash
-make baseline
-make hybrid
-```
-
 ### Expected Output
 
 ```
