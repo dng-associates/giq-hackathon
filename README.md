@@ -1,6 +1,8 @@
-# Repository for a hybrid classical + quantum option-pricing workflow.
+# QuTech - QIG Hackathon 2026
 
-## Pipeline
+Repository for a hybrid classical + quantum option-pricing workflow. 
+
+# Pipeline 
 
 The project is organized around the following development pipeline.
 
