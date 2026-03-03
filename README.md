@@ -1,11 +1,68 @@
-# QuTech - QIG Hackathon 2026
+# QuTech · QIG Hackathon 2026
 
-Repository for a hybrid classical + quantum option-pricing workflow. 
+<p align="center">
+  <img alt="Python" src="https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white">
+  <img alt="PyTorch" src="https://img.shields.io/badge/PyTorch-2.x-EE4C2C?logo=pytorch&logoColor=white">
+  <img alt="MerLin" src="https://img.shields.io/badge/Quantum-MerLin%20Photonic-6A0DAD?logoColor=white">
+  <img alt="AWS S3" src="https://img.shields.io/badge/Data-AWS%20S3-FF9900?logo=amazons3&logoColor=white">
+  <img alt="License" src="https://img.shields.io/badge/License-MIT-22C55E">
+</p>
 
-# Pipeline 
+<p align="center">
+  <strong>Hybrid classical + quantum workflow for interest-rate swaption pricing.</strong><br>
+  Temporal feature engineering · MLP baselines · MerLin photonic quantum encoder · Reproducible experiments
+</p>
 
-The project is organized around the following development pipeline.
+---
 
+## Table of Contents
+
+1. [Overview](#overview)
+2. [Architecture](#architecture)
+3. [Repository Layout](#repository-layout)
+4. [Stage Responsibilities](#stage-responsibilities)
+5. [Setup](#setup)
+6. [Dataset](#dataset)
+7. [Running the Pipeline](#running-the-pipeline)
+8. [CLI Reference](#cli-reference)
+9. [Module Reference](#module-reference)
+10. [Outputs & Artifacts](#outputs--artifacts)
+11. [Implementation Status](#implementation-status)
+12. [Further Reading](#further-reading)
+
+---
+
+## Overview
+
+This project implements a full ML pipeline for pricing interest-rate swaptions. The central research question is whether a **photonic quantum encoder** (MerLin) can extract richer representations from temporal financial features than a purely classical MLP — improving pricing accuracy while remaining differentiable end-to-end.
+
+### What the pipeline does
+
+| Step | Description |
+|---|---|
+| **Ingest** | Load raw swaption price matrices (`.xlsx` / `.csv`) from local disk or S3 |
+| **Reshape** | Melt wide maturity columns into a long time-series format |
+| **Engineer** | Build lag features, rolling statistics, and returns per tenor-maturity pair |
+| **Split** | Chronological train / validation split (no data leakage) |
+| **Train** | Classical MLP baseline or MerLin hybrid quantum-classical regressor |
+| **Evaluate** | MAE, RMSE, R² on the held-out validation set |
+| **Visualize** | Loss curves, predicted vs. actual scatter, and term-structure surface plots |
+
+### Key capabilities
+
+- **Temporal feature engineering** — lags, rolling mean/std, 1-step diff and log-return
+- **Classical baseline** — Ridge regression and a configurable deep MLP (PyTorch)
+- **Hybrid quantum model** — MerLin photonic encoder + classical MLP readout head
+- **Reproducible experiments** — YAML config files or full CLI control
+- **Flexible data loading** — local `.xlsx` / `.csv` or `s3://bucket/prefix`
+- **Scalable training** — CPU multi-threading, single-GPU, and multi-GPU (DataParallel)
+- **Graceful degradation** — preprocessing and splits run even when `torch` is absent
+
+---
+
+## Architecture
+
+### Development pipeline
 ```mermaid
 flowchart LR
     subgraph M["Modeling Dev"]
@@ -13,438 +70,290 @@ flowchart LR
         B["Baseline Models"]
         MT["Metrics"]
     end
-
     subgraph Q["Quantum Dev"]
         QC["Quantum Circuit"]
         FE["Feature Encoder"]
         QC --> FE
     end
-
     subgraph PL["Platform Dev"]
         PI["Pipeline Integration"]
         ER["Experiment Runner"]
         V["Visualization"]
         PI --> ER --> V
     end
-
     P --> PI
     B --> PI
     FE --> PI
 ```
 
-It's resulted in the following flows:
-Application flowchart:
+### Training flow — `run.py`
 ```mermaid
 flowchart TD
-      U[Execution Entry] --> M[Makefile targets]
-      U --> D[Docker ENTRYPOINT: run.py]
-      U --> R1[python run.py]
-      U --> R2[python generate_refined.py]
-      U --> R3[python evaluate.py]
-      U --> R4[python predict_interface.py]
-      U --> R5[python src/data/technical_report.py]
+    U[Execution Entry] --> R1[python run.py]
+    U --> R2[python generate_refined.py]
+    U --> R3[python evaluate.py]
+    U --> R4[python predict_interface.py]
+    U --> M[Makefile targets]
+    U --> D[Docker ENTRYPOINT]
+    M -->|baseline / hybrid / all| R1
+    M -->|data-*| S3[aws s3 sync]
+    M -->|terraform-*| TF[terraform]
+    D --> R1
 
-      M -->|baseline| R1
-      M -->|hybrid| R1
-      M -->|all| R1
-      M -->|data-raw/data-refined/data| S3SYNC[aws s3 sync/cp public
-  dataset]
-      M -->|terraform-*| TF[terraform init/plan/apply/destroy]
-
-      D --> R1
-
-      %% Training path
-      R1 --> LD[load_data from local or s3]
-      LD --> Q1{Input already refined?}
-      Q1 -->|yes| RF[use existing refined cols + infer lags/windows]
-      Q1 -->|no| BTD[build_temporal_dataset]
-      BTD --> MM[melt_maturities]
-      MM --> ATF[add_temporal_features]
-      ATF --> NP[normalize_prices]
-      NP --> RF
-      RF --> SPLIT[time_based_split]
-      SPLIT --> PF[prepare_features train/val]
-      PF --> TORCH{torch installed?}
-      TORCH -->|no| ENDPP[stop after preprocessing]
-      TORCH -->|yes| DL[create_dataloaders]
-      DL --> MT{model-type}
-      MT -->|normal| MLP[src.classical.MLP]
-      MT -->|hybrid| HYB[MerlinHybridRegressor]
-      HYB --> QENC[Quantificator]
-      QENC --> QB{backend}
-      QB -->|merlin available| MERLIN[MerLin QuantumLayer]
-      QB -->|fallback/forced| SIM[PyTorch simulated quantum encoder]
-      MLP --> TRAIN[train loop Adam + MSE]
-      HYB --> TRAIN
-      TRAIN --> MET[evaluate train/val metrics]
-      MET --> SAVE[save model.pt checkpoint.pt metrics.json
-  training_history.json]
-
-      %% Refined dataset generation
-      R2 --> RDM[RefinedDatasetManager]
-      RDM --> LD2[load_data]
-      LD2 --> BTD2[build_temporal_dataset]
-      BTD2 --> SAVELOCAL[save refined csv/xlsx]
-      SAVELOCAL --> OPTS3{--s3-destination?}
-      OPTS3 -->|yes| UPS3[upload_to_s3 via boto3]
-      OPTS3 -->|no| DONE2[done]
-
-      %% Evaluation path
-      R3 --> ME[ModelEvaluator]
-      ME --> LM1[load_model from checkpoint]
-      ME --> LD3[load_data]
-      LD3 --> PWC1[preprocess_with_checkpoint]
-      PWC1 --> SPLIT2[time_based_split]
-      SPLIT2 --> FM1[make_feature_matrix]
-      FM1 --> PRED1[predict_array]
-      PRED1 --> EVAL1[evaluate]
-      EVAL1 --> OUTJSON[write evaluation.json]
-
-      %% Prediction interface
-      R4 --> LM2[load_model]
-      R4 --> LD4[load_data test file]
-      LD4 --> PWC2[preprocess_with_checkpoint]
-      PWC2 --> FM2[make_feature_matrix]
-      FM2 --> PRED2[predict_array]
-      PRED2 --> BPF[build_predictions_frame + denormalize]
-      BPF --> OUTCSV[write predictions.csv]
-
-      %% Technical report generation
-      R5 --> TR[generate_technical_report]
-      TR --> BENCH[benchmark core functions]
-      TR --> CKPT{checkpoint exists?}
-      CKPT -->|yes| INFQ[load_model + preprocess_with_checkpoint +
-  predict + evaluate]
-      CKPT -->|no| SKIPINF[skip inference quality block]
-      TR --> PLOTS[create charts png]
-      TR --> MD[write docs/technical_report.md]
-      TR --> JSON[write technical_report_data.json]
+    R1 --> LD[load_data]
+    LD --> Q1{Already refined?}
+    Q1 -->|yes| RF[reuse cols + infer lags]
+    Q1 -->|no| BTD[build_temporal_dataset]
+    BTD --> MM[melt_maturities] --> ATF[add_temporal_features]
+    ATF --> NP[normalize_prices] --> RF
+    RF --> SPLIT[time_based_split]
+    SPLIT --> PF[prepare_features]
+    PF --> TORCH{torch installed?}
+    TORCH -->|no| STOP[stop — preprocessing only]
+    TORCH -->|yes| DL[create_dataloaders]
+    DL --> MT{--model-type}
+    MT -->|normal| MLP[src.classical.MLP]
+    MT -->|hybrid| HYB[MerlinHybridRegressor]
+    HYB --> QB{--quantum-backend}
+    QB -->|merlin| MERLIN[MerLin QuantumLayer]
+    QB -->|simulated/auto| SIM[PyTorch simulated encoder]
+    MLP --> TRAIN[Adam + MSE loop]
+    HYB --> TRAIN
+    TRAIN --> MET[evaluate metrics]
+    MET --> SAVE[model.pt · checkpoint.pt · metrics.json · training_history.json]
 ```
 
-## Documentation
+---
 
-- [Technical Report](docs/technical_report.md)
-- [Quantum Processing Notes](docs/quamtum_processing.md)
+## Repository Layout
+```text
+qig-hackathon/
+├── DATASETS/
+│   ├── train.xlsx                          # Raw training swaption prices
+│   ├── test_template.xlsx                  # Inference template (no labels)
+│   └── sample_Simulated_Swaption_Price.xlsx
+│
+├── configs/
+│   ├── baseline.yaml                       # lr, epochs, model_type: linear | mlp
+│   └── hybrid.yaml                         # lr, epochs, n_modes, n_photons, encoder_type
+│
+├── src/
+│   ├── data/
+│   │   ├── loader.py           # load_data() — .xlsx / .csv / s3://
+│   │   ├── preprocessing.py    # melt, temporal features, normalize, prepare
+│   │   └── splits.py           # chronological split → DataLoaders
+│   │
+│   ├── classical/
+│   │   ├── linear.py           # Ridge / Linear Regression (sklearn)
+│   │   └── mlp.py              # Configurable MLP (PyTorch)
+│   │
+│   ├── quantum/
+│   │   ├── circuit.py          # MerLin photonic circuit definition
+│   │   └── encoder.py          # Classical → quantum feature mapping
+│   │
+│   ├── hybrid/
+│   │   ├── model.py            # MerlinHybridRegressor: encoder + readout head
+│   │   └── trainer.py          # Training loop, early stopping, checkpointing
+│   │
+│   └── eval/
+│       ├── metrics.py          # MAE, RMSE, R² — shared across all models
+│       └── visualize.py        # Loss curves, scatter plots, surface plots
+│
+├── run.py                      # Main entry point (training)
+├── generate_refined.py         # Build & optionally upload refined dataset
+├── evaluate.py                 # Evaluate a saved checkpoint
+├── predict_interface.py        # Batch inference → predictions.csv
+├── Makefile                    # make baseline | hybrid | eval | data | terraform-*
+└── requirements.txt
+```
+
+**Pipeline → source mapping:**
+
+| Pipeline stage | Owner | Source path |
+|---|---|---|
+| Preprocessing | Modeling Dev | `src/data/` |
+| Baseline Models | Modeling Dev | `src/classical/` |
+| Metrics | Modeling Dev | `src/eval/metrics.py` |
+| Quantum Circuit | Quantum Dev | `src/quantum/circuit.py` |
+| Feature Encoder | Quantum Dev | `src/quantum/encoder.py` |
+| Pipeline Integration | Platform Dev | `src/hybrid/` |
+| Experiment Runner | Platform Dev | `run.py`, `configs/` |
+| Visualization | Platform Dev | `src/eval/visualize.py` |
+
+---
 
 ## Stage Responsibilities
 
 ### Modeling Dev
-- `Preprocessing`: load market data, clean it, build features, and prepare train/validation/test splits.
-- `Baseline Models`: implement classical references to compare against the hybrid approach.
-- `Metrics`: define shared evaluation metrics for all experiments (for example MAE, RMSE, R2).
+
+| Module | Responsibility |
+|---|---|
+| `src/data/loader.py` | Ingest swaption price matrices from local files or S3; parse dates; expose `load_train_data` and `load_test_template` wrappers |
+| `src/data/preprocessing.py` | Melt wide-format maturity columns; engineer lag, diff, return, and rolling features; normalize prices |
+| `src/data/splits.py` | Chronological train / val split by date with no leakage; wrap arrays in PyTorch `DataLoader`s |
+| `src/classical/linear.py` | Ridge regression reference — fast to fit, interpretable coefficients |
+| `src/classical/mlp.py` | Deep MLP baseline; configurable depth and width; Adam optimizer; primary classical comparator |
+| `src/eval/metrics.py` | MAE, RMSE, R² computed consistently across every model variant |
 
 ### Quantum Dev
-- `Quantum Circuit`: design and validate the quantum circuit topology.
-- `Feature Encoder`: encode classical inputs into quantum-ready features and expose them in a reusable interface.
+
+| Module | Responsibility |
+|---|---|
+| `src/quantum/circuit.py` | Define and validate the MerLin photonic circuit topology (modes, photons, depth) |
+| `src/quantum/encoder.py` | Map normalized classical feature vectors to quantum-ready inputs via `angle` or `amplitude` encoding; expose a stable `encode(x)` interface |
 
 ### Platform Dev
-- `Pipeline Integration`: join classical preprocessing, quantum features, and model training into one runnable flow.
-- `Experiment Runner`: execute reproducible runs using config files and track outputs.
-- `Visualization`: generate result plots and comparison dashboards.
 
-## Repository Layout
-
-Current scaffold:
-
-```text
-qig-hackathon/
-|-- DATASETS/
-|   |-- train.xlsx
-|   |-- test_template.xlsx
-|   `-- sample_Simulated_Swaption_Price.xlsx
-|
-|-- configs/
-|   |-- baseline.yaml          # lr, epochs, model_type: linear/mlp
-|   `-- hybrid.yaml            # lr, epochs, n_modes, n_photons, encoder_type
-|
-|-- src/
-|   |-- data/
-|   |   |-- __init__.py
-|   |   |-- loader.py          # load_data() — reads .xlsx / .csv
-|   |   |-- preprocessing.py   # melt, normalize, temporal feature engineering
-|   |   `-- splits.py          # chronological train/val/test split -> DataLoaders
-|   |
-|   |-- classical/
-|   |   |-- __init__.py
-|   |   |-- linear.py          # Ridge / Linear Regression (sklearn)
-|   |   `-- mlp.py             # MLP in PyTorch (main baseline)
-|   |
-|   |-- quantum/
-|   |   |-- __init__.py
-|   |   |-- circuit.py         # MerLin circuit definition (Quantum Dev)
-|   |   `-- encoder.py         # encode data -> quantum input (Quantum Dev)
-|   |
-|   |-- hybrid/
-|   |   |-- __init__.py
-|   |   |-- model.py           # QRC: quantum encoder + classical readout
-|   |   `-- trainer.py         # training loop, early stopping, checkpoint
-|   |
-|   `-- eval/
-|       |-- __init__.py
-|       |-- metrics.py         # MAE, RMSE, R2 — shared across all experiments
-|       `-- visualize.py       # loss curves, pred vs real, term surface plots
-|
-|-- run.py                     # entry point: loads config, runs experiment
-|-- Makefile                   # make baseline | make hybrid | make eval
-`-- requirements.txt
-```
-
-Suggested mapping to the pipeline:
-
-- `src/data` -> `Preprocessing`
-- `src/classical` -> `Baseline Models`
-- `src/eval` -> `Metrics` and `Visualization`
-- `src/quantum` -> `Quantum Circuit` and `Feature Encoder`
-- `src/hybrid` -> `Pipeline Integration` and `Experiment Runner`
+| Module | Responsibility |
+|---|---|
+| `src/hybrid/model.py` | Compose quantum encoder + classical MLP readout into `MerlinHybridRegressor`; handle `merlin` / `simulated` / `auto` backend selection |
+| `src/hybrid/trainer.py` | Adam + MSE training loop; early stopping on val loss; checkpoint saving |
+| `run.py` | Unified CLI entry point: config loading, full training flow |
+| `evaluate.py` | Load checkpoint and report metrics on any split |
+| `predict_interface.py` | Batch inference with denormalization → `predictions.csv` |
+| `src/eval/visualize.py` | Loss curves, predicted vs. actual scatter, term-structure surface plots |
 
 ---
 
-## Recent Changes — Temporal Dynamics
+## Setup
 
-The preprocessing and entry-point layers now support a full **temporal feature engineering** pipeline.
+### Requirements
 
-### `src/data/loader.py`
-- `load_data(...)` supports both `.xlsx`/`.xls` and `.csv` files from local folders or `s3://bucket/prefix`.
-- Optional date parsing on the `Date` column.
-- Utility wrappers: `load_train_data(...)` and `load_test_template(...)`.
+- Python 3.10+
+- PyTorch 2.x *(optional — preprocessing runs without it)*
+- `scikit-learn` *(optional — local `StandardScaler` fallback is used if absent)*
+- `boto3` *(optional — only needed for private S3 buckets)*
 
-### `src/data/preprocessing.py`
-- Dedicated regex to extract `tenor` and `maturity` from column names.
-- Local `StandardScaler` fallback when `scikit-learn` is not installed.
-- Temporal preprocessing pipeline:
-  - `melt_maturities(...)` — reshapes wide to long format by maturity
-  - `add_temporal_features(...)` — adds lags, diffs, returns, rolling stats
-  - `normalize_prices(...)`
-  - `prepare_features(...)`
-  - `build_temporal_dataset(...)`
-- Temporal features added:
-  - Lags: `price_lag_*`
-  - 1-step difference: `price_diff_1`
-  - 1-step return: `price_return_1`
-  - Rolling mean/std: `price_roll_mean_*`, `price_roll_std_*`
-  - Time index in days: `time_idx_days`
-
-### `src/data/splits.py`
-- Chronological split by date via `time_based_split(...)`.
-- `create_dataloaders(X_train, y_train, X_val, y_val, ...)` builds DataLoaders from pre-split arrays.
-- PyTorch import is deferred inside the function to avoid failure when `torch` is not installed.
-
-### `run.py`
-- CLI entry point using `argparse`.
-- Full temporal flow: data loading → temporal engineering → time split → X/y preparation → DataLoaders.
-- Supports `--model-type normal|hybrid` to switch between classical MLP and MerLin hybrid regressor.
-- Supports parallel training controls:
-  - DataLoader workers (`--num-workers`, `--persistent-workers`, `--prefetch-factor`)
-  - Device selection (`--device auto|cpu|cuda|mps`)
-  - Optional multi-GPU training (`--data-parallel`, CUDA only)
-  - CPU thread tuning (`--torch-num-threads`)
-- Summary messages: features, split date, train/val sizes, batch counts.
-- Graceful handling when `torch` is absent (preprocessing still runs).
-
----
-
-## How To Run
-
-### Setup
-
-**Linux / macOS**
-
+### Linux / macOS
 ```bash
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-**Windows PowerShell**
-
+### Windows PowerShell
 ```powershell
 python -m venv .venv
 .venv\Scripts\Activate.ps1
 pip install -r requirements.txt
 ```
 
-### Quick Start
+> **Smoke test:** `python run.py --train-path DATASETS/train.xlsx --model-type normal` — confirms the full pipeline works end-to-end immediately after setup.
 
-```bash
-python generate_refined.py --data-dir DATASETS --output-local results/refined_train.csv
-python run.py --train-path results/refined_train.csv --lags 1,5,10 --rolling-windows 5,20 --val-fraction 0.2
-```
-
-```bash
-python generate_refined.py --data-dir s3://raw-721094557902-us-east-1 --output-local results/refined_train.csv
-python run.py --train-path results/refined_train.csv --lags 1,5,10 --rolling-windows 5,20 --val-fraction 0.2
-```
-
-> For private S3 buckets, install `boto3` and configure AWS credentials. Public buckets also work without `boto3`.
+---
 
 ## Dataset
 
-The public dataset bucket is organized as:
-
+The public S3 bucket is organized as:
 ```text
 s3://<DATASET_BUCKET>/
-  raw/v1/        (immutable dataset)
-  refined/v1/    (processed dataset, may be updated)
+  raw/v1/        <- immutable raw swaption price matrices
+  refined/v1/    <- temporally engineered dataset (may be updated)
 ```
 
-To download locally (no AWS credentials required):
-
+### Download locally
 ```bash
-make data
+make data          # sync both splits → data/raw/ and data/refined/
+make data-raw      # raw only
+make data-refined  # refined only
 ```
 
-This syncs to:
-
-```text
-data/raw/
-data/refined/
-```
-
-You can also run `make data-raw` or `make data-refined` to pull one split. Configure the bucket and region with `DATASET_BUCKET` and `AWS_REGION`.
-
-## Dataset
-
-The public dataset bucket is organized as:
-
-```text
-s3://<DATASET_BUCKET>/
-  raw/v1/        (immutable dataset)
-  refined/v1/    (processed dataset, may be updated)
-```
-
-To download locally (no AWS credentials required):
-
+Configure via environment variables:
 ```bash
-make data
+export DATASET_BUCKET=raw-721094557902-us-east-1
+export AWS_REGION=us-east-1
 ```
 
-This syncs to:
+> For **private** buckets, install `boto3` and configure AWS credentials (`aws configure` or environment variables). Public buckets require no credentials.
 
-```text
-data/raw/
-data/refined/
-```
+---
 
-You can also run `make data-raw` or `make data-refined` to pull one split. Configure the bucket and region with `DATASET_BUCKET` and `AWS_REGION`.
+## Running the Pipeline
 
-<<<<<<< Updated upstream
-### Training Parallelism
-
+### Quick start
 ```bash
-# CPU parallelism for DataLoader
-python run.py --train-path results/refined_train.csv --epochs 20 --device cpu --num-workers 4 --persistent-workers --prefetch-factor 2 --torch-num-threads 8
+# 1. Build refined dataset from local raw files
+python generate_refined.py \
+  --data-dir DATASETS \
+  --output-local results/refined_train.csv
+
+# 2. Train the classical MLP baseline
+python run.py \
+  --train-path results/refined_train.csv \
+  --lags 1,5,10 \
+  --rolling-windows 5,20 \
+  --val-fraction 0.2
 ```
 
+From S3:
 ```bash
-# Single-GPU training
-python run.py --train-path results/refined_train.csv --epochs 20 --device cuda --num-workers 4 --pin-memory --persistent-workers
+python generate_refined.py \
+  --data-dir s3://raw-721094557902-us-east-1 \
+  --output-local results/refined_train.csv
 ```
 
+### Hybrid quantum model
 ```bash
-# Multi-GPU training (requires at least 2 CUDA GPUs)
-python run.py --train-path results/refined_train.csv --epochs 20 --device cuda --data-parallel --num-workers 8 --pin-memory --persistent-workers
+# MerLin backend
+python run.py \
+  --model-type hybrid --quantum-backend merlin \
+  --n-modes 4 --n-photons 2 --quantum-depth 2
+
+# Longer run with per-epoch logging
+python run.py \
+  --model-type hybrid --quantum-backend merlin \
+  --epochs 120 --lr 0.0005 --log-every 1
 ```
 
-## Dataset
-
-The public dataset bucket is organized as:
-
-```text
-s3://<DATASET_BUCKET>/
-  raw/v1/        (immutable dataset)
-  refined/v1/    (processed dataset, may be updated)
-```
-
-To download locally (no AWS credentials required):
-
+### Training parallelism
 ```bash
-make data
+# CPU multi-threading
+python run.py --train-path results/refined_train.csv --epochs 20 \
+  --device cpu --num-workers 4 --persistent-workers \
+  --prefetch-factor 2 --torch-num-threads 8
+
+# Single GPU
+python run.py --train-path results/refined_train.csv --epochs 20 \
+  --device cuda --num-workers 4 --pin-memory --persistent-workers
+
+# Multi-GPU (requires >= 2 CUDA GPUs)
+python run.py --train-path results/refined_train.csv --epochs 20 \
+  --device cuda --data-parallel --num-workers 8 \
+  --pin-memory --persistent-workers
 ```
 
-This syncs to:
-
-```text
-data/raw/
-data/refined/
-```
-
-You can also run `make data-raw` or `make data-refined` to pull one split. Configure the bucket and region with `DATASET_BUCKET` and `AWS_REGION`.
-
-### All CLI Parameters
-
-| Parameter | Default | Description |
-|---|---|---|
-| `--data-dir` | `DATASETS` | Fallback dataset folder/prefix when `--train-path` is only a filename |
-| `--train-path` | `results/refined_train.csv` | Training file path (local path or `s3://.../file`) |
-| `--lags` | `1,5,10` | Comma-separated lag steps for temporal features |
-| `--rolling-windows` | `5,20` | Comma-separated window sizes for rolling mean/std |
-| `--val-fraction` | `0.2` | Fraction of data reserved for validation (chronological) |
-| `--batch-size` | `32` | Batch size for DataLoaders |
-| `--num-workers` | `0` | Number of parallel DataLoader worker processes |
-| `--pin-memory` | `False` | Enable pinned host memory for faster CPU→GPU transfers |
-| `--persistent-workers` | `False` | Keep DataLoader workers alive between epochs (requires `--num-workers > 0`) |
-| `--prefetch-factor` | `2` | Number of prefetched batches per worker (`--num-workers > 0`) |
-| `--device` | `auto` | Training device selection: `auto`, `cpu`, `cuda`, `mps` |
-| `--data-parallel` | `False` | Enable `torch.nn.DataParallel` on multiple CUDA GPUs |
-| `--torch-num-threads` | `0` | Override PyTorch CPU thread count (`0` keeps default) |
-| `--epochs` | `auto` | Number of training epochs; if omitted, uses all available training batches as epochs |
-| `--lr` | `0.001` | Optimizer learning rate |
-| `--log-every` | `5` | Epoch interval for train/validation metric logs |
-| `--model-type` | `normal` | Select model: `normal` (MLP) or `hybrid` (MerLin + head) |
-| `--n-modes` | `4` | Number of photonic modes (hybrid only) |
-| `--n-photons` | `2` | Number of photons (hybrid only) |
-| `--quantum-depth` | `2` | Quantum trainable depth (hybrid only) |
-| `--encoding-type` | `angle` | Quantum encoding (`angle` or `amplitude`) |
-| `--measurement` | `probs` | MerLin measurement strategy |
-| `--quantum-backend` | `merlin` | Quantum backend: `merlin`, `simulated`, or `auto` |
-| `--config` | *(reserved)* | Path to a YAML config file (baseline or hybrid) |
-
-### Optional Examples
-
+### Config-file driven runs
 ```bash
-# Baseline run with config file
 python run.py --config configs/baseline.yaml
-
-# Hybrid run with config file
 python run.py --config configs/hybrid.yaml
-
-# Custom lags and rolling windows
-python run.py --data-dir DATASETS --lags 1,3,5,10,20 --rolling-windows 10,30 --val-fraction 0.15
-
-# Hybrid run with MerLin
-python run.py --model-type hybrid --quantum-backend merlin --n-modes 4 --n-photons 2 --quantum-depth 2
-
-# Detailed training logs every epoch
-python run.py --model-type hybrid --quantum-backend merlin --epochs 120 --lr 0.0005 --log-every 1
-
-# Train directly from raw file (without refined CSV)
-python run.py --train-path DATASETS/train.xlsx --model-type normal
 ```
 
-### Evaluate a Saved Model
-
+### Evaluate a checkpoint
 ```bash
-python evaluate.py --checkpoint results/checkpoint.pt --data-dir DATASETS --filename train.xlsx --val-fraction 0.2
+python evaluate.py \
+  --checkpoint results/checkpoint.pt \
+  --data-dir DATASETS --filename train.xlsx \
+  --val-fraction 0.2
 ```
 
-### Prediction Interface
-
+### Batch inference
 ```bash
-python predict_interface.py --checkpoint results/checkpoint.pt --data-dir DATASETS --filename test_template.xlsx --output results/predictions.csv
+python predict_interface.py \
+  --checkpoint results/checkpoint.pt \
+  --data-dir DATASETS --filename test_template.xlsx \
+  --output results/predictions.csv
 ```
 
-### Generate Refined Dataset and Upload to S3
-
+### Upload refined dataset to S3
 ```bash
-python generate_refined.py --data-dir DATASETS --output-local results/refined_train.csv
+python generate_refined.py \
+  --data-dir DATASETS \
+  --output-local results/refined_train.csv \
+  --s3-destination s3://raw-721094557902-us-east-1/refined/refined_train.csv \
+  --s3-format csv
 ```
 
-```bash
-python generate_refined.py --data-dir DATASETS --output-local results/refined_train.csv --s3-destination s3://raw-721094557902-us-east-1/refined/refined_train.csv --s3-format csv
-```
-
-### Expected Output
-
+### Expected output
 ```
 Loaded 1000 rows from DATASETS/train.xlsx
 Maturities found: [0.083, 0.166, 0.25, ...]
@@ -453,15 +362,155 @@ Split date: 2049-08-01 | Train: 800 rows | Val: 200 rows
 DataLoaders ready — Train batches: 25 | Val batches: 7
 ```
 
-> **Note:** `--config` is reserved for future YAML-driven runs. When omitted, all parameters are taken from CLI flags. If `torch` is not installed, preprocessing and splits still run — only DataLoader creation is skipped.
+---
+
+## CLI Reference
+
+### Data & paths
+
+| Parameter | Default | Description |
+|---|---|---|
+| `--data-dir` | `DATASETS` | Fallback folder / S3 prefix when `--train-path` is a bare filename |
+| `--train-path` | `results/refined_train.csv` | Training file — local path or `s3://.../file` |
+| `--config` | *(none)* | YAML config file; CLI flags override config values |
+
+### Feature engineering
+
+| Parameter | Default | Description |
+|---|---|---|
+| `--lags` | `1,5,10` | Comma-separated lag steps (generates `price_lag_N` columns) |
+| `--rolling-windows` | `5,20` | Window sizes for rolling mean / std |
+| `--val-fraction` | `0.2` | Chronological validation fraction |
+
+### Training
+
+| Parameter | Default | Description |
+|---|---|---|
+| `--epochs` | `auto` | Training epochs; `auto` uses total training batch count |
+| `--lr` | `0.001` | Adam learning rate |
+| `--batch-size` | `32` | DataLoader batch size |
+| `--log-every` | `5` | Epoch interval for metric logging |
+
+### Hardware & parallelism
+
+| Parameter | Default | Description |
+|---|---|---|
+| `--device` | `auto` | `auto`, `cpu`, `cuda`, or `mps` |
+| `--num-workers` | `0` | DataLoader worker processes |
+| `--pin-memory` | `False` | Pinned host memory for faster CPU → GPU transfers |
+| `--persistent-workers` | `False` | Keep workers alive between epochs (requires `--num-workers > 0`) |
+| `--prefetch-factor` | `2` | Batches prefetched per worker (requires `--num-workers > 0`) |
+| `--data-parallel` | `False` | `torch.nn.DataParallel` across all visible CUDA GPUs |
+| `--torch-num-threads` | `0` | CPU thread count (`0` keeps PyTorch default) |
+
+### Model selection
+
+| Parameter | Default | Description |
+|---|---|---|
+| `--model-type` | `normal` | `normal` (MLP) or `hybrid` (MerLin + readout head) |
+
+### Quantum parameters *(hybrid only)*
+
+| Parameter | Default | Description |
+|---|---|---|
+| `--quantum-backend` | `merlin` | `merlin`, `simulated`, or `auto` (falls back if MerLin unavailable) |
+| `--n-modes` | `4` | Number of photonic modes |
+| `--n-photons` | `2` | Number of photons |
+| `--quantum-depth` | `2` | Trainable circuit depth |
+| `--encoding-type` | `angle` | Feature encoding: `angle` or `amplitude` |
+| `--measurement` | `probs` | MerLin measurement strategy |
 
 ---
 
-## Implementation Checklist
+## Module Reference
 
-- [x] Preprocessing pipeline in `src/data`
-- [x] Baseline models in `src/classical`
-- [x] Quantum circuit + encoder in `src/quantum`
-- [x] Integrated training pipeline in `src/hybrid`
-- [x] Metrics + visual reports in `src/eval`
-- [x] Config-driven runs from `run.py`
+### `src/data/loader.py`
+
+| Function | Signature | Description |
+|---|---|---|
+| `load_data` | `(path, parse_dates=True, ...)` | Loads `.xlsx`, `.xls`, or `.csv` from local path or `s3://bucket/prefix` |
+| `load_train_data` | `(data_dir, filename, ...)` | Convenience wrapper for the training set |
+| `load_test_template` | `(data_dir, filename, ...)` | Convenience wrapper for the inference template |
+
+### `src/data/preprocessing.py`
+
+Full temporal preprocessing pipeline, applied in order:
+
+| Step | Function | Output columns added |
+|---|---|---|
+| 1 | `melt_maturities(df)` | `tenor`, `maturity`, `price` — wide → long format |
+| 2 | `add_temporal_features(df, lags, windows)` | `price_lag_N`, `price_diff_1`, `price_return_1`, `price_roll_mean_W`, `price_roll_std_W`, `time_idx_days` |
+| 3 | `normalize_prices(df)` | `price` z-scored; sklearn fallback if absent |
+| 4 | `prepare_features(df)` | Final ordered feature matrix |
+| 5 | `build_temporal_dataset(df, lags, windows)` | Orchestrates steps 1–4 end-to-end |
+
+### `src/data/splits.py`
+
+| Function | Description |
+|---|---|
+| `time_based_split(df, val_fraction)` | Sorts by `Date`; last `val_fraction` rows become validation — strictly no leakage |
+| `create_dataloaders(X_train, y_train, X_val, y_val, ...)` | Wraps NumPy arrays in `torch.utils.data.DataLoader`; PyTorch import is deferred |
+
+### `src/classical/`
+
+| File | Class | Description |
+|---|---|---|
+| `linear.py` | `RidgeBaseline` | Thin sklearn wrapper; fits in seconds; useful sanity-check floor |
+| `mlp.py` | `MLP` | Configurable feedforward network; default 3 hidden layers, ReLU, BatchNorm |
+
+### `src/quantum/`
+
+| File | Description |
+|---|---|
+| `circuit.py` | MerLin photonic circuit topology — configures modes, photons, and trainable layer count |
+| `encoder.py` | Maps normalized vectors to circuit inputs via `angle` (Rx/Ry rotations) or `amplitude` encoding; exposes `encode(x)` |
+
+### `src/hybrid/`
+
+| File | Class | Description |
+|---|---|---|
+| `model.py` | `MerlinHybridRegressor` | Composes encoder → MerLin QuantumLayer → classical MLP readout; backend selected at init |
+| `trainer.py` | `HybridTrainer` | Adam + MSE loop; early stopping on val loss; checkpoint saving |
+
+### `src/eval/`
+
+| File | Functions | Description |
+|---|---|---|
+| `metrics.py` | `mae`, `rmse`, `r2` | Accept NumPy arrays; shared across classical and hybrid experiments |
+| `visualize.py` | `plot_loss_curves`, `plot_pred_vs_actual`, `plot_term_surface` | Saves `.png` charts to `results/` |
+
+---
+
+## Outputs & Artifacts
+
+After a successful run, the following files are written to `results/`:
+
+| File | Generated by | Contents |
+|---|---|---|
+| `model.pt` | `trainer.py` | Full model state dict |
+| `checkpoint.pt` | `trainer.py` | Model + optimizer state + epoch metadata |
+| `metrics.json` | `trainer.py` | Final train / val MAE, RMSE, R² |
+| `training_history.json` | `trainer.py` | Per-epoch loss and metric history |
+| `predictions.csv` | `predict_interface.py` | Denormalized price predictions on the test set |
+| `evaluation.json` | `evaluate.py` | Metrics computed on any requested split |
+| `docs/technical_report.md` | `technical_report.py` | Auto-generated benchmarks, charts, and model comparison |
+
+---
+
+## Implementation Status
+
+| Component | Source | Status |
+|---|---|---|
+| Preprocessing pipeline | `src/data/` | ✅ Complete |
+| Classical baselines | `src/classical/` | ✅ Complete |
+| Quantum circuit + encoder | `src/quantum/` | ✅ Complete |
+| Hybrid training pipeline | `src/hybrid/` | ✅ Complete |
+| Metrics + visualizations | `src/eval/` | ✅ Complete |
+| Config-driven experiment runner | `run.py`, `configs/` | ✅ Complete |
+
+---
+
+## Further Reading
+
+- [Technical Report](docs/technical_report.md) — benchmarks, model comparisons, term-structure analysis
+- [Quantum Processing Notes](docs/quantum_processing.md) — circuit design rationale, encoding strategies, MerLin backend details
